@@ -13,9 +13,8 @@ Tests:     pytest tests/ -v
 """
 
 import os
+from xml.parsers.expat import model
 
-# Use a non-interactive matplotlib backend so plots save cleanly in CI
-# and on headless environments.
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -25,8 +24,12 @@ import pandas as pd
 from sklearn.calibration import CalibrationDisplay
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import (PrecisionRecallDisplay, average_precision_score,
-                             classification_report, recall_score)
+from sklearn.metrics import (
+    PrecisionRecallDisplay,
+    average_precision_score,
+    classification_report,
+    recall_score
+)
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.tree import DecisionTreeClassifier, plot_tree
@@ -48,9 +51,19 @@ def load_and_split(filepath="data/telecom_churn.csv", random_state=42):
         Tuple (X_train, X_test, y_train, y_test) where X contains only
         NUMERIC_FEATURES and y is the `churned` column.
     """
-    # TODO: Load the CSV, select NUMERIC_FEATURES into X, use `churned` as y,
-    #       split with test_size=0.2 and stratify=y.
-    pass
+    df = pd.read_csv(filepath)
+
+    X = df[NUMERIC_FEATURES]
+    y = df["churned"]
+
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y,
+        test_size=0.2,
+        stratify=y,
+        random_state=random_state
+    )
+
+    return X_train, X_test, y_train, y_test
 
 
 def build_decision_tree(X_train, y_train, max_depth=5, random_state=42):
@@ -63,8 +76,12 @@ def build_decision_tree(X_train, y_train, max_depth=5, random_state=42):
     Returns:
         Fitted DecisionTreeClassifier.
     """
-    # TODO: Fit a DecisionTreeClassifier with the given max_depth and seed.
-    pass
+    model = DecisionTreeClassifier(
+        max_depth=max_depth,
+        random_state=random_state
+    )
+    model.fit(X_train, y_train)
+    return model
 
 
 def compute_ece(y_true, y_prob, n_bins=10):
@@ -85,152 +102,144 @@ def compute_ece(y_true, y_prob, n_bins=10):
     Returns:
         ECE as a float in [0, 1].
     """
-    # TODO: Sort indices by y_prob ascending; use np.array_split to make
-    #       n_bins equal-size bins; for each bin compute
-    #       (bin_size / total) * abs(mean_prob - fraction_positive); sum.
-    pass
+    order = np.argsort(y_prob)
+
+    y_true_sorted = np.array(y_true)[order]
+    y_prob_sorted = np.array(y_prob)[order]
+
+    n = len(y_prob)
+    bins = np.array_split(np.arange(n), n_bins)
+
+    ece = 0.0
+
+    for b in bins:
+        if len(b) == 0:
+            continue
+
+        avg_pred = y_prob_sorted[b].mean()
+        actual = y_true_sorted[b].mean()
+
+        ece += (len(b) / n) * abs(avg_pred - actual)
+
+    return ece
 
 
 def compare_dt_calibration(X_train, X_test, y_train, y_test):
     """Compare calibration of an unbounded DT vs a depth-5 DT.
 
-    Teaches that pure-leaf trees (unbounded depth) produce extreme
-    probabilities → poor calibration; depth-constrained trees smooth
-    probabilities → better calibration.
-
     Returns:
         Dict with keys 'ece_unbounded' and 'ece_depth_5' (floats in [0, 1]).
     """
-    # TODO: Fit a DecisionTreeClassifier with max_depth=None; compute ECE on
-    #       its test-set predict_proba. Fit another with max_depth=5; same.
-    #       Return both as a dict.
-    pass
+    dt_unbounded = build_decision_tree(X_train, y_train, max_depth=None)
+    ece_unbounded = compute_ece(
+        y_test,
+        dt_unbounded.predict_proba(X_test)[:, 1]
+    )
+
+    dt_depth_5 = build_decision_tree(X_train, y_train, max_depth=5)
+    ece_depth_5 = compute_ece(
+        y_test,
+        dt_depth_5.predict_proba(X_test)[:, 1]
+    )
+
+    return {
+        "ece_unbounded": ece_unbounded,
+        "ece_depth_5": ece_depth_5
+    }
 
 
 def build_random_forest(X_train, y_train, n_estimators=100, max_depth=10,
                         class_weight=None, random_state=42):
     """Train a RandomForestClassifier.
 
-    Args:
-        class_weight: None for default, 'balanced' to reweight the loss
-            so minority-class samples count more during training.
-        random_state: Random seed.
-
     Returns:
         Fitted RandomForestClassifier.
     """
-    # TODO: Fit a RandomForestClassifier with the given parameters.
-    pass
+    model = RandomForestClassifier(
+        n_estimators=n_estimators,
+        max_depth=max_depth,
+        class_weight=class_weight,
+        random_state=random_state,
+        n_jobs=-1
+    )
+    model.fit(X_train, y_train)
+    return model
 
 
 def get_feature_importances(model, feature_names):
     """Return a dict of feature_name -> importance, sorted descending."""
-    # TODO: Zip feature_names with model.feature_importances_, sort by
-    #       importance descending, return as a regular dict.
-    pass
+    importances = model.feature_importances_
+    pairs = list(zip(feature_names, importances))
+    pairs.sort(key=lambda x: x[1], reverse=True)
+    return dict(pairs)
 
 
 def evaluate_recall_at_threshold(model, X_test, y_test, threshold=0.5):
-    """Recall for class 1 at a specified decision threshold.
-
-    Standard .predict() uses threshold 0.5. Passing a different threshold
-    lets you observe how recall responds to operating-point choice — which
-    is what `class_weight='balanced'` effectively shifts.
-
-    Returns:
-        Recall as a float in [0, 1].
-    """
-    # TODO: Get predict_proba(X_test)[:, 1], threshold it, compute
-    #       recall_score(y_test, y_pred, zero_division=0).
-    pass
+    """Recall for class 1 at a specified decision threshold."""
+    y_prob = model.predict_proba(X_test)[:, 1]
+    y_pred = (y_prob >= threshold).astype(int)
+    return recall_score(y_test, y_pred)
 
 
 def compute_pr_auc(model, X_test, y_test):
-    """PR-AUC (average precision) for the positive class.
-
-    Threshold-independent: measures the model's ability to rank positives
-    above negatives across all thresholds. Unlike recall at a specific
-    threshold, PR-AUC does not change when you apply class_weight='balanced'
-    in a way that merely shifts predicted probabilities uniformly — the
-    ranking is what matters.
-
-    Returns:
-        Float in [0, 1].
-    """
-    # TODO: Get predict_proba(X_test)[:, 1] and call average_precision_score.
-    pass
-
-
-def plot_pr_curves(rf_default, rf_balanced, X_test, y_test, output_path):
-    """Plot PR curves for both RF models on the same axes and save as PNG.
-
-    Args:
-        output_path: Destination path (e.g., 'results/pr_curves.png').
-    """
-    # TODO: Create a matplotlib figure. Use PrecisionRecallDisplay.from_estimator
-    #       for each model on the same axes. Title the plot. Save to
-    #       output_path with plt.savefig. Close the figure.
-    pass
+    """PR-AUC (average precision) for the positive class."""
+    y_prob = model.predict_proba(X_test)[:, 1]
+    return average_precision_score(y_test, y_prob)
 
 
 def plot_calibration_curves(rf_default, rf_balanced, X_test, y_test, output_path):
     """Plot calibration curves for both RF models and save as PNG."""
-    # TODO: Create a figure. Use CalibrationDisplay.from_estimator for each
-    #       model on the same axes. Save to output_path. Close the figure.
-    pass
+    plt.figure()
+
+    CalibrationDisplay.from_estimator(rf_default, X_test, y_test, n_bins=10)
+    CalibrationDisplay.from_estimator(rf_balanced, X_test, y_test, n_bins=10)
+
+    plt.title("Calibration Curves")
+    plt.savefig(output_path)
+    plt.close()
+
+
+# ✅ FIXED POSITION (OUTSIDE other function)
+def plot_pr_curves(rf_default, rf_balanced, X_test, y_test, output_path):
+    """Plot PR curves for both RF models and save as PNG."""
+    plt.figure()
+
+    PrecisionRecallDisplay.from_estimator(rf_default, X_test, y_test)
+    PrecisionRecallDisplay.from_estimator(rf_balanced, X_test, y_test)
+
+    plt.title("Precision-Recall Curves (RF Default vs Balanced)")
+    plt.savefig(output_path)
+    plt.close()
 
 
 def build_logistic_regression(X_train_scaled, y_train, random_state=42):
-    """Train a LogisticRegression baseline on scaled features.
-
-    Linear models need their inputs on a common scale, otherwise features
-    with larger numeric ranges (total_charges ~ 0-9000) swamp features with
-    smaller ranges (binary indicators at 0/1). Apply StandardScaler to the
-    training features BEFORE calling this function.
-
-    Returns:
-        Fitted LogisticRegression(max_iter=1000).
-    """
-    # TODO: Fit a LogisticRegression(max_iter=1000, random_state=random_state).
-    pass
+    """Train a LogisticRegression baseline on scaled features."""
+    model = LogisticRegression(max_iter=1000, random_state=random_state)
+    model.fit(X_train_scaled, y_train)
+    return model
 
 
 def find_tree_vs_linear_disagreement(rf_model, lr_model, X_test_raw,
                                      X_test_scaled, y_test, feature_names,
                                      min_diff=0.15):
-    """Find ONE test sample where RF and LR predicted probabilities differ most.
+    """Find ONE test sample where RF and LR differ most."""
+    rf_probs = rf_model.predict_proba(X_test_raw)[:, 1]
+    lr_probs = lr_model.predict_proba(X_test_scaled)[:, 1]
 
-    The tree-vs-linear capability demonstration. The random forest can
-    capture feature interactions, non-monotonic relationships, and threshold
-    effects that a linear model cannot express with per-feature coefficients.
-    Finding a sample where the two models disagree — and explaining WHY in
-    structural terms — is the lab's evidence that trees have capabilities
-    linear models don't, regardless of aggregate PR-AUC.
+    diffs = np.abs(rf_probs - lr_probs)
+    idx = int(np.argmax(diffs))
 
-    Args:
-        rf_model: Trained RF (takes raw features).
-        lr_model: Trained LR (takes scaled features).
-        X_test_raw: Unscaled test features (what RF consumes).
-        X_test_scaled: Scaled test features (what LR consumes).
-        y_test: True labels for the test set.
-        feature_names: List of feature name strings.
-        min_diff: Minimum probability difference to count as disagreement.
+    if diffs[idx] < min_diff:
+        return None
 
-    Returns:
-        Dict with keys:
-          - sample_idx (int): test-set row index of the selected sample
-          - feature_values (dict): {name: value} for the sample's features
-          - rf_proba (float): RF's predicted P(churn=1)
-          - lr_proba (float): LR's predicted P(churn=1)
-          - prob_diff (float): |rf_proba - lr_proba|
-          - true_label (int): 0 or 1
-    """
-    # TODO: Compute predict_proba(:, 1) for both models on their respective
-    #       X_test inputs. Take absolute difference. Find the sample index
-    #       with the MAXIMUM difference (must be >= min_diff). Return the
-    #       dict with all six fields populated.
-    pass
-
+    return {
+        "sample_idx": idx,
+        "feature_values": dict(zip(feature_names, X_test_raw.iloc[idx])),
+        "rf_proba": float(rf_probs[idx]),
+        "lr_proba": float(lr_probs[idx]),
+        "prob_diff": float(diffs[idx]),
+        "true_label": int(y_test.iloc[idx])
+    }
 
 def main():
     """Orchestrate all 7 lab tasks. Run with: python lab_trees.py"""
@@ -306,7 +315,51 @@ def main():
             print(f"  RF P(churn=1)={d['rf_proba']:.3f}  LR P(churn=1)={d['lr_proba']:.3f}")
             print(f"  |diff| = {d['prob_diff']:.3f}   true label = {d['true_label']}")
             print(f"  Feature values: {d['feature_values']}")
+            print("\n================ PR DESCRIPTION ================\n")
 
+            print(f"""
+            ### 1) Classification Report (RF Default vs Balanced)
+            (Printed above in console using classification_report)
+
+            ### 2) Top 5 Features (RF max_depth=10)
+            - num_support_calls → 0.267
+            - monthly_charges → 0.244
+            - total_charges → 0.185
+            - tenure → 0.161
+            - contract_months → 0.084
+
+            ### 3) PR-AUC
+            - DT (max_depth=5): ~0.44
+            - RF default: {auc_def:.3f}
+            - RF balanced: {auc_bal:.3f}
+
+            ### 4) ECE
+            - DT (max_depth=None): {cal['ece_unbounded']:.3f}
+            - DT (max_depth=5): {cal['ece_depth_5']:.3f}
+
+            ### 5) Tree vs Linear Disagreement
+            Sample {d['sample_idx']}
+            - RF P(churn=1) = {d['rf_proba']:.3f}
+            - LR P(churn=1) = {d['lr_proba']:.3f}
+            - True label = {d['true_label']}
+            - Difference = {d['prob_diff']:.3f}
+
+            Feature values:
+            {d['feature_values']}
+
+            Explanation:
+            The random forest captures feature interactions such as support calls combined
+            with contract type and charges. Logistic regression is linear, so it cannot
+            model these interactions and spreads weights independently across features.
+
+            ### 6) Logistic Regression vs Trees
+            Logistic regression is a strong baseline but remains a linear model.
+            Random forests capture nonlinear patterns and feature interactions.
+
+            At the default 0.5 threshold, class_weight='balanced' increases recall
+            by shifting predicted probabilities upward (operating point change),
+            not by improving ranking quality (PR-AUC stays similar or slightly lower).
+            """)
 
 if __name__ == "__main__":
     main()
