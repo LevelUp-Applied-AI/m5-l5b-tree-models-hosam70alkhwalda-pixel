@@ -325,11 +325,11 @@ def threshold_sweep(model, X_test, y_test, output_path,
     # Mark recall >= 0.80 threshold
     if recall80_threshold is not None:
         ax.axvline(recall80_threshold, color="#FF9800", linestyle=":", linewidth=1.2,
-                   label=f"Recall ≥ 0.80 threshold = {recall80_threshold:.2f}")
+                   label=f"Recall \u2265 0.80 threshold = {recall80_threshold:.2f}")
 
     ax.set_xlabel("Decision Threshold")
     ax.set_ylabel("Score")
-    ax.set_title("Threshold Sweep — Balanced RF (Precision / Recall / F1)")
+    ax.set_title("Threshold Sweep \u2014 Balanced RF (Precision / Recall / F1)")
     ax.set_xlim(0.05, 0.95)
     ax.set_ylim(0.0, 1.05)
     ax.legend(loc="upper right", fontsize=8)
@@ -339,8 +339,8 @@ def threshold_sweep(model, X_test, y_test, output_path,
     note = (
         "Petra Telecom capacity: 200 contacts/month.\n"
         f"Recommended threshold: {best_f1_threshold:.2f} (maximises F1).\n"
-        "Lower threshold → more false positives (wasted calls).\n"
-        "Higher threshold → more false negatives (lost customers)."
+        "Lower threshold \u2192 more false positives (wasted calls).\n"
+        "Higher threshold \u2192 more false negatives (lost customers)."
     )
     ax.text(0.98, 0.35, note, transform=ax.transAxes, fontsize=7.5,
             verticalalignment="top", horizontalalignment="right",
@@ -402,37 +402,35 @@ def plot_permutation_vs_mdi(rf_model, X_test, y_test, feature_names,
     top10 = sorted(mdi, key=mdi.get, reverse=True)[:10]
 
     mdi_vals  = np.array([mdi[f]  for f in top10])
-    perm_vals = np.array([perm[f] for f in top10])
-
-    # Normalise permutation to [0,1] for visual comparability with MDI
-    perm_min   = perm_vals.min()
-    perm_range = perm_vals.max() - perm_min
-    perm_norm  = (perm_vals - perm_min) / perm_range if perm_range > 0 else perm_vals.copy()
+    perm_vals = np.array([perm[f] for f in top10])   # raw values, no normalisation
 
     # --- Side-by-side bar chart ---
     x     = np.arange(len(top10))
     width = 0.38
 
-    fig, ax = plt.subplots(figsize=(11, 6))
-    bars_mdi  = ax.bar(x - width / 2, mdi_vals,  width,
-                       label="MDI (impurity reduction)", color="#2196F3", alpha=0.85)
-    bars_perm = ax.bar(x + width / 2, perm_norm, width,
-                       label="Permutation (normalised, PR-AUC drop)",
-                       color="#FF9800", alpha=0.85)
+    fig, ax = plt.subplots(figsize=(12, 6))
+
+    ax.bar(x - width / 2, mdi_vals,  width,
+           label="MDI (Mean Decrease Impurity)",
+           color="#4C9BE8", edgecolor="none")
+    ax.bar(x + width / 2, perm_vals, width,
+           label="Permutation Importance (PR-AUC)",
+           color="#E05252", edgecolor="none")
 
     ax.set_xticks(x)
-    ax.set_xticklabels(top10, rotation=30, ha="right", fontsize=9)
-    ax.set_ylabel("Importance")
-    ax.set_title("Feature Importance: MDI vs Permutation (Balanced RF, top 10)")
-    ax.legend()
-    ax.grid(axis="y", alpha=0.3)
-
-    for bar in bars_mdi:
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.003,
-                f"{bar.get_height():.3f}", ha="center", va="bottom", fontsize=7)
-    for bar, raw in zip(bars_perm, perm_vals):
-        ax.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 0.003,
-                f"{raw:.3f}", ha="center", va="bottom", fontsize=7)
+    ax.set_xticklabels(top10, rotation=35, ha="right", fontsize=10)
+    ax.set_ylabel("Importance", fontsize=11)
+    ax.set_title(
+        "Feature Importance: MDI vs Permutation (Top 10 Features)\n"
+        "Balanced Random Forest \u2014 Test Set",
+        fontsize=12,
+        pad=12,
+    )
+    ax.legend(loc="upper right", fontsize=10, frameon=True)
+    ax.grid(axis="y", alpha=0.3, linewidth=0.8)
+    ax.spines[["top", "right"]].set_visible(False)
+    ax.set_axisbelow(True)
+    ax.axhline(0, color="black", linewidth=0.6, alpha=0.4)
 
     plt.tight_layout()
     os.makedirs(os.path.dirname(output_path) or ".", exist_ok=True)
@@ -652,15 +650,15 @@ def main():
         sweep = threshold_sweep(rf_bal, X_test, y_test, "results/threshold_sweep.png")
         print(f"\n--- Tier 1: Threshold Sweep (balanced RF) ---")
         print(f"  Best F1 threshold      : {sweep['best_f1_threshold']:.2f}  (F1={sweep['best_f1']:.3f})")
-        print(f"  Recall ≥ 0.80 threshold: {sweep['recall80_threshold']}")
+        print(f"  Recall \u2265 0.80 threshold: {sweep['recall80_threshold']}")
         print(f"  Saved: results/threshold_sweep.png")
         print(
             f"\n  Recommendation (200 contacts/month):\n"
-            f"  Use threshold={sweep['best_f1_threshold']:.2f} to maximise F1 — it balances\n"
+            f"  Use threshold={sweep['best_f1_threshold']:.2f} to maximise F1 \u2014 it balances\n"
             f"  the cost of false positives (wasted retention calls) against\n"
             f"  the opportunity cost of false negatives (churners not contacted).\n"
             f"  If churn prevention revenue >> call cost, lower to "
-            f"{sweep['recall80_threshold']} to capture ≥80% of churners,\n"
+            f"{sweep['recall80_threshold']} to capture \u226580% of churners,\n"
             f"  accepting more wasted contacts within the 200-call budget."
         )
 
@@ -700,7 +698,7 @@ def main():
         print(
             "\n  When/why they disagree:\n"
             "  MDI counts how often a feature is used for splits weighted by\n"
-            "  impurity reduction — it inflates continuous high-cardinality\n"
+            "  impurity reduction \u2014 it inflates continuous high-cardinality\n"
             "  features (e.g. total_charges, tenure) because they offer more\n"
             "  candidate split points. Permutation importance shuffles one\n"
             "  feature at a time on held-out data and measures the drop in\n"
@@ -755,7 +753,7 @@ def main():
               f"({'better' if ens_eval['pr_auc'] > max(lr_pr_auc, dt_pr_auc, rf_pr_auc) else 'not better'} than best individual)")
         print(
             "\n  When to expect ensemble gains:\n"
-            "  Ensembling improves when models make uncorrelated errors —\n"
+            "  Ensembling improves when models make uncorrelated errors \u2014\n"
             "  the LR is a linear boundary while the RF captures interactions,\n"
             "  so they can complement each other on different regions of the\n"
             "  feature space. If one model dominates (RF here), the ensemble\n"
